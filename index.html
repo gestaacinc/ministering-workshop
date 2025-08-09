@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ministering Workshop</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation; /* Prevents double-tap zoom on mobile */
+        }
+        .bowl {
+            transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+        }
+        .bowl:hover {
+            transform: translateY(-5px);
+        }
+        
+        /* New Animation Styles */
+        .scenario-display {
+            transition: all 0.1s ease-in-out;
+        }
+        .scenario-display.is-flashing {
+            transform: scale(1.03);
+            filter: blur(1px);
+            opacity: 0.7;
+        }
+        .scenario-display.final-pick {
+            transform: scale(1);
+            filter: blur(0);
+            opacity: 1;
+            transition: all 0.3s ease-out;
+            box-shadow: 0 0 25px rgba(59, 130, 246, 0.5);
+        }
+
+        .note {
+            animation: drop-in 0.5s ease-out forwards;
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+        @keyframes drop-in {
+            from {
+                opacity: 0;
+                transform: translateY(-20px) scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        /* Custom scrollbar for a cleaner look */
+        #bowl2-content::-webkit-scrollbar {
+            width: 8px;
+        }
+        #bowl2-content::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 10px;
+        }
+        #bowl2-content::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 10px;
+        }
+        #bowl2-content::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased">
+
+    <!-- Firebase and App Logic -->
+    <script type="module">
+        // --- Firebase Imports ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Firebase Configuration ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "AIza...", authDomain: "...", projectId: "..." };
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // --- Firebase Initialization ---
+        let db, auth;
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+        } catch (e) {
+            console.error("Error initializing Firebase:", e);
+            showModal("Error", "Could not connect to the workshop service. Please refresh the page.");
+        }
+
+        // --- Authentication ---
+        onAuthStateChanged(auth, async (user) => {
+            if (!user) {
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (error) {
+                    console.error("Authentication failed:", error);
+                    showModal("Authentication Error", "Could not sign in. Some features might not work.");
+                }
+            }
+            setupBowl2Listener();
+        });
+
+        // --- Bowl 1: Scenarios with Roleta Animation ---
+        const scenarios = [
+            "A family you minister to recently had a death in the family. How can you offer Christlike comfort beyond just saying 'let me know if you need anything'?",
+            "A young single adult in your ward seems lonely and rarely participates in activities. What are some simple, low-pressure ways to help them feel included?",
+            "You learn a member you minister to has to work on Sundays to support their family. How can you minister to them without judgment, helping them feel connected to the ward?",
+            "A member mentions they've gotten into the habit of only attending sacrament meeting and then leaving. What are some ways you could gently encourage them to enjoy the fellowship of the full two-hour block?",
+            "A new convert in your ward is enthusiastic but seems overwhelmed. How can you minister to them to help strengthen their testimony and integrate them into the ward family?",
+            "You are assigned to a family that is very different from your own (culturally, economically, or in family structure). How do you build a genuine, meaningful relationship with them?",
+            "A member confides in you that they are struggling with their testimony. How do you respond in a loving, supportive, and faith-promoting way?"
+        ];
+
+        const drawButton = document.getElementById('draw-scenario-btn');
+        const scenarioDisplay = document.getElementById('scenario-display');
+        const scenarioText = document.getElementById('scenario-text');
+        
+        drawButton.addEventListener('click', () => {
+            drawButton.disabled = true;
+            drawButton.textContent = 'Picking...';
+            scenarioDisplay.classList.remove('final-pick');
+
+            let flashes = 0;
+            const maxFlashes = 25; // Total flashes before stopping
+            const intervalSpeed = 100; // Speed of flashes in ms
+
+            const flashInterval = setInterval(() => {
+                scenarioDisplay.classList.add('is-flashing');
+                const randomIndex = Math.floor(Math.random() * scenarios.length);
+                scenarioText.textContent = scenarios[randomIndex];
+                
+                flashes++;
+                if (flashes >= maxFlashes) {
+                    clearInterval(flashInterval);
+                    pickFinalScenario();
+                }
+            }, intervalSpeed);
+        });
+
+        function pickFinalScenario() {
+            const finalIndex = Math.floor(Math.random() * scenarios.length);
+            scenarioText.textContent = scenarios[finalIndex];
+            
+            scenarioDisplay.classList.remove('is-flashing');
+            scenarioDisplay.classList.add('final-pick');
+            
+            drawButton.disabled = false;
+            drawButton.textContent = 'Draw Another Scenario';
+        }
+
+
+        // --- Bowl 2: Interactive Input & Display ---
+        const submissionForm = document.getElementById('submission-form');
+        const submissionInput = document.getElementById('submission-input');
+        const bowl2Content = document.getElementById('bowl2-content');
+        const loadingSpinner = document.getElementById('loading-spinner');
+
+        submissionForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const text = submissionInput.value.trim();
+            if (text === '' || !db) return;
+
+            const submitButton = submissionForm.querySelector('button');
+            submitButton.disabled = true;
+            submitButton.textContent = 'Submitting...';
+
+            try {
+                const collectionPath = `artifacts/${appId}/public/data/ministering-thoughts`;
+                await addDoc(collection(db, collectionPath), {
+                    text: text,
+                    createdAt: new Date()
+                });
+                submissionInput.value = '';
+            } catch (error) {
+                console.error("Error adding document: ", error);
+                showModal("Submission Error", "Could not save your thought. Please try again.");
+            } finally {
+                 submitButton.disabled = false;
+                 submitButton.textContent = 'Add to Bowl';
+            }
+        });
+
+        function setupBowl2Listener() {
+            if (!db) return;
+            const collectionPath = `artifacts/${appId}/public/data/ministering-thoughts`;
+            const q = query(collection(db, collectionPath));
+
+            onSnapshot(q, (querySnapshot) => {
+                loadingSpinner.style.display = 'none';
+                bowl2Content.innerHTML = '';
+                if (querySnapshot.empty) {
+                    bowl2Content.innerHTML = `<p class="text-slate-500 text-center italic p-4">The bowl is empty. Be the first to add a thought!</p>`;
+                } else {
+                    const sortedDocs = querySnapshot.docs.sort((a, b) => b.data().createdAt.toMillis() - a.data().createdAt.toMillis());
+                    sortedDocs.forEach((doc) => {
+                        createNoteElement(doc.data().text);
+                    });
+                }
+            }, (error) => {
+                console.error("Error listening to collection:", error);
+                loadingSpinner.style.display = 'none';
+                bowl2Content.innerHTML = `<p class="text-red-500 text-center p-4">Could not load thoughts. Check connection.</p>`;
+            });
+        }
+
+        function createNoteElement(text) {
+            const note = document.createElement('div');
+            note.className = 'note bg-amber-100 text-amber-900 p-3 rounded-lg shadow-sm border border-amber-200';
+            
+            const p = document.createElement('p');
+            p.textContent = text;
+            note.appendChild(p);
+
+            bowl2Content.appendChild(note);
+        }
+
+        // --- Modal for notifications ---
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalBody = document.getElementById('modal-body');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+
+        function showModal(title, message) {
+            modalTitle.textContent = title;
+            modalBody.textContent = message;
+            modal.classList.remove('hidden');
+        }
+
+        modalCloseBtn.addEventListener('click', () => {
+            modal.classList.add('hidden');
+        });
+
+    </script>
+
+    <!-- Main Content -->
+    <main class="container mx-auto p-4 md:p-8 max-w-7xl">
+        <header class="text-center mb-8 md:mb-12">
+            <h1 class="text-4xl md:text-5xl font-bold text-slate-900">Ministering Workshop</h1>
+            <p class="mt-2 text-lg text-slate-600">Discovering Higher and Holier Ways to Serve</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+            <!-- Bowl 1: Scenarios -->
+            <section class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 flex flex-col">
+                <div class="flex items-center mb-4">
+                    <div class="bg-blue-100 text-blue-700 rounded-full h-12 w-12 flex items-center justify-center mr-4 flex-shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                    </div>
+                    <h2 class="text-2xl font-bold">Bowl #1: Ministering Scenarios</h2>
+                </div>
+                <p class="text-slate-600 mb-4">Discuss how you would apply Christlike love in these real-life situations.</p>
+                
+                <div class="flex-grow flex items-center justify-center min-h-[200px] relative w-full bg-slate-100 rounded-lg border-2 border-dashed border-slate-300 p-4">
+                    <div id="scenario-display" class="w-full h-full bg-blue-50 p-6 rounded-lg flex items-center justify-center border border-blue-200">
+                        <p id="scenario-text" class="text-center text-lg font-medium text-blue-900">Click the button to draw a scenario</p>
+                    </div>
+                </div>
+
+                <button id="draw-scenario-btn" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-300 shadow-md hover:shadow-lg disabled:bg-slate-400 disabled:cursor-not-allowed">
+                    Draw a Scenario
+                </button>
+            </section>
+
+            <!-- Bowl 2: How I Like to be Ministered To -->
+            <section class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 flex flex-col">
+                <div class="flex items-center mb-4">
+                     <div class="bg-amber-100 text-amber-700 rounded-full h-12 w-12 flex items-center justify-center mr-4 flex-shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
+                    </div>
+                    <h2 class="text-2xl font-bold">Bowl #2: Your Thoughts</h2>
+                </div>
+                <p class="text-slate-600 mb-4">How do you like to be ministered to? Add your anonymous thoughts to the bowl.</p>
+                
+                <form id="submission-form" class="flex flex-col sm:flex-row gap-2 mb-4">
+                    <input id="submission-input" type="text" placeholder="e.g., 'A simple text message means a lot'" class="flex-grow w-full px-4 py-2 bg-slate-100 border border-slate-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:outline-none transition">
+                    <button type="submit" class="bg-amber-500 text-white font-bold py-2 px-6 rounded-md hover:bg-amber-600 focus:outline-none focus:ring-4 focus:ring-amber-300 transition-all duration-300 shadow-md hover:shadow-lg disabled:bg-amber-300">
+                        Add to Bowl
+                    </button>
+                </form>
+
+                <div class="bg-slate-100 rounded-lg p-4 flex-grow border border-slate-200 min-h-[250px] relative">
+                    <div id="loading-spinner" class="absolute inset-0 flex items-center justify-center bg-slate-100 bg-opacity-75 z-10">
+                        <svg class="animate-spin h-8 w-8 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </div>
+                    <div id="bowl2-content" class="space-y-3 h-full max-h-[40vh] lg:max-h-[30vh] overflow-y-auto pr-2 relative">
+                        <!-- Submitted notes will appear here -->
+                    </div>
+                </div>
+
+            </section>
+        </div>
+    </main>
+
+    <!-- Modal -->
+    <div id="modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+                <h3 id="modal-title" class="text-lg leading-6 font-medium text-gray-900"></h3>
+                <div class="mt-2 px-7 py-3">
+                    <p id="modal-body" class="text-sm text-gray-500"></p>
+                </div>
+                <div class="items-center px-4 py-3">
+                    <button id="modal-close-btn" class="px-4 py-2 bg-blue-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-300">
+                        OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
