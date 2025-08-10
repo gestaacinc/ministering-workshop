@@ -11,16 +11,10 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            touch-action: manipulation; /* Prevents double-tap zoom on mobile */
-        }
-        .bowl {
-            transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
-        }
-        .bowl:hover {
-            transform: translateY(-5px);
+            touch-action: manipulation;
         }
         
-        /* New Animation Styles */
+        /* Animation Styles */
         .scenario-display {
             transition: all 0.1s ease-in-out;
         }
@@ -43,30 +37,50 @@
             transform: translateY(-20px);
         }
         @keyframes drop-in {
+            from { opacity: 0; transform: translateY(-20px) scale(0.9); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        /* --- Updated Modal Animation Styles --- */
+        .modal-overlay {
+            transition: opacity 0.3s ease-in-out;
+        }
+        .modal-content {
+            transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.3s ease-in-out;
+        }
+        .modal-hidden .modal-overlay {
+            opacity: 0;
+        }
+        .modal-hidden .modal-content {
+            opacity: 0;
+            transform: translateY(50px) scale(0.95);
+        }
+
+        /* Floating Heart Animation */
+        .floating-heart {
+            position: absolute;
+            bottom: 1rem;
+            left: 50%;
+            font-size: 2rem;
+            animation: float-up 2s ease-out forwards;
+            pointer-events: none;
+        }
+        @keyframes float-up {
             from {
-                opacity: 0;
-                transform: translateY(-20px) scale(0.9);
+                transform: translate(-50%, 0) scale(1);
+                opacity: 1;
             }
             to {
-                opacity: 1;
-                transform: translateY(0) scale(1);
+                transform: translate(-50%, -150px) scale(0.5);
+                opacity: 0;
             }
         }
-        /* Custom scrollbar for a cleaner look */
-        #bowl2-content::-webkit-scrollbar {
-            width: 8px;
-        }
-        #bowl2-content::-webkit-scrollbar-track {
-            background: #f1f5f9;
-            border-radius: 10px;
-        }
-        #bowl2-content::-webkit-scrollbar-thumb {
-            background: #94a3b8;
-            border-radius: 10px;
-        }
-        #bowl2-content::-webkit-scrollbar-thumb:hover {
-            background: #64748b;
-        }
+
+        /* Custom scrollbar */
+        #bowl2-content::-webkit-scrollbar { width: 8px; }
+        #bowl2-content::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+        #bowl2-content::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
+        #bowl2-content::-webkit-scrollbar-thumb:hover { background: #64748b; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased">
@@ -75,43 +89,64 @@
     <script type="module">
         // --- Firebase Imports ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Firebase Configuration ---
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "AIza...", authDomain: "...", projectId: "..." };
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const firebaseConfig = {
+          apiKey: "AIzaSyCbJZpp5sJhmtB28MuRmpR3OyCnC332if8",
+          authDomain: "ministering-workshop-app.firebaseapp.com",
+          projectId: "ministering-workshop-app",
+          storageBucket: "ministering-workshop-app.firebasestorage.app",
+          messagingSenderId: "643900794295",
+          appId: "1:643900794295:web:1f10260dea585076aa7432"
+        };
+
+        // --- App State ---
+        let db, auth, app;
+        let allThoughts = [];
+        let thoughtsRevealed = false;
+
+        // --- Element References ---
+        const drawButton = document.getElementById('draw-scenario-btn');
+        const scenarioDisplay = document.getElementById('scenario-display');
+        const scenarioText = document.getElementById('scenario-text');
+        const scenarioModal = document.getElementById('scenario-modal');
+        const scenarioModalText = document.getElementById('scenario-modal-text');
+        const scenarioModalClose = document.getElementById('scenario-modal-close');
+        
+        const submissionForm = document.getElementById('submission-form');
+        const submissionInput = document.getElementById('submission-input');
+        const bowl2Content = document.getElementById('bowl2-content');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const bowl2CollectingState = document.getElementById('bowl2-collecting-state');
+        const submissionCounter = document.getElementById('submission-counter');
+        const revealButton = document.getElementById('reveal-thoughts-btn');
 
         // --- Firebase Initialization ---
-        let db, auth;
         try {
-            const app = initializeApp(firebaseConfig);
+            app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
         } catch (e) {
             console.error("Error initializing Firebase:", e);
-            showModal("Error", "Could not connect to the workshop service. Please refresh the page.");
         }
 
         // --- Authentication ---
         onAuthStateChanged(auth, async (user) => {
             if (!user) {
                 try {
-                    if (initialAuthToken) {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
+                    await signInAnonymously(auth);
                 } catch (error) {
                     console.error("Authentication failed:", error);
-                    showModal("Authentication Error", "Could not sign in. Some features might not work.");
                 }
             }
-            setupBowl2Listener();
+            if (auth.currentUser) {
+                setupBowl2Listener();
+            }
         });
 
-        // --- Bowl 1: Scenarios with Roleta Animation ---
+        // --- Bowl 1: Scenarios with Pop-up Modal ---
         const scenarios = [
             "A family you minister to recently had a death in the family. How can you offer Christlike comfort beyond just saying 'let me know if you need anything'?",
             "A young single adult in your ward seems lonely and rarely participates in activities. What are some simple, low-pressure ways to help them feel included?",
@@ -121,51 +156,54 @@
             "You are assigned to a family that is very different from your own (culturally, economically, or in family structure). How do you build a genuine, meaningful relationship with them?",
             "A member confides in you that they are struggling with their testimony. How do you respond in a loving, supportive, and faith-promoting way?"
         ];
-
-        const drawButton = document.getElementById('draw-scenario-btn');
-        const scenarioDisplay = document.getElementById('scenario-display');
-        const scenarioText = document.getElementById('scenario-text');
         
         drawButton.addEventListener('click', () => {
             drawButton.disabled = true;
-            drawButton.textContent = 'Picking...';
+            drawButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 4.75V6.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M17.1266 6.87347L16.0659 7.93413" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M19.25 12L17.75 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M17.1266 17.1265L16.0659 16.0659" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M12 17.75V19.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M6.87347 17.1265L7.93413 16.0659" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M4.75 12L6.25 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M6.87347 6.87347L7.93413 7.93413" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg> Picking...`;
             scenarioDisplay.classList.remove('final-pick');
-
-            let flashes = 0;
-            const maxFlashes = 25; // Total flashes before stopping
-            const intervalSpeed = 100; // Speed of flashes in ms
 
             const flashInterval = setInterval(() => {
                 scenarioDisplay.classList.add('is-flashing');
                 const randomIndex = Math.floor(Math.random() * scenarios.length);
                 scenarioText.textContent = scenarios[randomIndex];
-                
-                flashes++;
-                if (flashes >= maxFlashes) {
-                    clearInterval(flashInterval);
-                    pickFinalScenario();
-                }
-            }, intervalSpeed);
+            }, 100);
+
+            setTimeout(() => {
+                clearInterval(flashInterval);
+                pickFinalScenario();
+            }, 2500);
         });
 
         function pickFinalScenario() {
             const finalIndex = Math.floor(Math.random() * scenarios.length);
-            scenarioText.textContent = scenarios[finalIndex];
-            
+            const finalScenario = scenarios[finalIndex];
+            scenarioText.textContent = "Scenario Selected!";
             scenarioDisplay.classList.remove('is-flashing');
             scenarioDisplay.classList.add('final-pick');
             
+            showScenarioModal(finalScenario);
+
             drawButton.disabled = false;
-            drawButton.textContent = 'Draw Another Scenario';
+            drawButton.innerHTML = 'Draw Another Scenario';
         }
 
+        function showScenarioModal(text) {
+            scenarioModalText.textContent = text;
+            scenarioModal.classList.remove('hidden');
+            // A small delay to allow the 'hidden' class to be removed before starting animation
+            setTimeout(() => scenarioModal.classList.remove('modal-hidden'), 20);
+        }
 
-        // --- Bowl 2: Interactive Input & Display ---
-        const submissionForm = document.getElementById('submission-form');
-        const submissionInput = document.getElementById('submission-input');
-        const bowl2Content = document.getElementById('bowl2-content');
-        const loadingSpinner = document.getElementById('loading-spinner');
+        function hideScenarioModal() {
+            scenarioModal.classList.add('modal-hidden');
+            setTimeout(() => scenarioModal.classList.add('hidden'), 300);
+        }
 
+        scenarioModalClose.addEventListener('click', hideScenarioModal);
+        document.getElementById('scenario-modal-overlay').addEventListener('click', hideScenarioModal);
+
+
+        // --- Bowl 2: Interactive Input & Display with Reveal Step ---
         submissionForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const text = submissionInput.value.trim();
@@ -176,71 +214,74 @@
             submitButton.textContent = 'Submitting...';
 
             try {
-                const collectionPath = `artifacts/${appId}/public/data/ministering-thoughts`;
+                const collectionPath = `public/data/ministering-thoughts`;
                 await addDoc(collection(db, collectionPath), {
                     text: text,
                     createdAt: new Date()
                 });
                 submissionInput.value = '';
+                showSubmissionConfirmation();
             } catch (error) {
                 console.error("Error adding document: ", error);
-                showModal("Submission Error", "Could not save your thought. Please try again.");
             } finally {
                  submitButton.disabled = false;
                  submitButton.textContent = 'Add to Bowl';
             }
         });
 
+        function showSubmissionConfirmation() {
+            const heart = document.createElement('div');
+            heart.className = 'floating-heart';
+            heart.textContent = '❤️';
+            bowl2CollectingState.appendChild(heart);
+            setTimeout(() => heart.remove(), 2000);
+        }
+
         function setupBowl2Listener() {
             if (!db) return;
-            const collectionPath = `artifacts/${appId}/public/data/ministering-thoughts`;
+            const collectionPath = `public/data/ministering-thoughts`;
             const q = query(collection(db, collectionPath));
 
             onSnapshot(q, (querySnapshot) => {
                 loadingSpinner.style.display = 'none';
-                bowl2Content.innerHTML = '';
-                if (querySnapshot.empty) {
-                    bowl2Content.innerHTML = `<p class="text-slate-500 text-center italic p-4">The bowl is empty. Be the first to add a thought!</p>`;
-                } else {
-                    const sortedDocs = querySnapshot.docs.sort((a, b) => b.data().createdAt.toMillis() - a.data().createdAt.toMillis());
-                    sortedDocs.forEach((doc) => {
-                        createNoteElement(doc.data().text);
-                    });
+                allThoughts = querySnapshot.docs.map(doc => doc.data());
+                allThoughts.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+
+                const count = allThoughts.length;
+                submissionCounter.textContent = `${count} ${count === 1 ? 'entry' : 'entries'} submitted`;
+
+                if (thoughtsRevealed) {
+                    displayAllThoughts();
                 }
-            }, (error) => {
-                console.error("Error listening to collection:", error);
-                loadingSpinner.style.display = 'none';
-                bowl2Content.innerHTML = `<p class="text-red-500 text-center p-4">Could not load thoughts. Check connection.</p>`;
             });
+        }
+        
+        revealButton.addEventListener('click', () => {
+            thoughtsRevealed = true;
+            displayAllThoughts();
+            bowl2CollectingState.classList.add('hidden');
+            revealButton.classList.add('hidden');
+            submissionForm.classList.add('hidden');
+            document.getElementById('bowl2-prompt').classList.add('hidden');
+        });
+        
+        function displayAllThoughts() {
+            bowl2Content.innerHTML = '';
+            if (allThoughts.length === 0) {
+                 bowl2Content.innerHTML = `<p class="text-slate-500 text-center italic p-4">The bowl is empty.</p>`;
+            } else {
+                allThoughts.forEach(thought => createNoteElement(thought.text));
+            }
         }
 
         function createNoteElement(text) {
             const note = document.createElement('div');
             note.className = 'note bg-amber-100 text-amber-900 p-3 rounded-lg shadow-sm border border-amber-200';
-            
             const p = document.createElement('p');
             p.textContent = text;
             note.appendChild(p);
-
             bowl2Content.appendChild(note);
         }
-
-        // --- Modal for notifications ---
-        const modal = document.getElementById('modal');
-        const modalTitle = document.getElementById('modal-title');
-        const modalBody = document.getElementById('modal-body');
-        const modalCloseBtn = document.getElementById('modal-close-btn');
-
-        function showModal(title, message) {
-            modalTitle.textContent = title;
-            modalBody.textContent = message;
-            modal.classList.remove('hidden');
-        }
-
-        modalCloseBtn.addEventListener('click', () => {
-            modal.classList.add('hidden');
-        });
-
     </script>
 
     <!-- Main Content -->
@@ -268,7 +309,7 @@
                     </div>
                 </div>
 
-                <button id="draw-scenario-btn" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-300 shadow-md hover:shadow-lg disabled:bg-slate-400 disabled:cursor-not-allowed">
+                <button id="draw-scenario-btn" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-300 shadow-md hover:shadow-lg disabled:bg-slate-400 disabled:cursor-not-allowed flex items-center justify-center">
                     Draw a Scenario
                 </button>
             </section>
@@ -281,7 +322,7 @@
                     </div>
                     <h2 class="text-2xl font-bold">Bowl #2: Your Thoughts</h2>
                 </div>
-                <p class="text-slate-600 mb-4">How do you like to be ministered to? Add your anonymous thoughts to the bowl.</p>
+                <p id="bowl2-prompt" class="text-slate-600 mb-4">How do you like to be ministered to? Add your anonymous thoughts to the bowl.</p>
                 
                 <form id="submission-form" class="flex flex-col sm:flex-row gap-2 mb-4">
                     <input id="submission-input" type="text" placeholder="e.g., 'A simple text message means a lot'" class="flex-grow w-full px-4 py-2 bg-slate-100 border border-slate-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:outline-none transition">
@@ -297,29 +338,38 @@
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
                     </div>
+                    <div id="bowl2-collecting-state" class="absolute inset-0 flex flex-col items-center justify-center text-center p-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-slate-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" /></svg>
+                        <p class="text-slate-600 font-semibold text-lg">Accepting thoughts...</p>
+                        <p id="submission-counter" class="text-slate-500">0 entries submitted</p>
+                    </div>
                     <div id="bowl2-content" class="space-y-3 h-full max-h-[40vh] lg:max-h-[30vh] overflow-y-auto pr-2 relative">
-                        <!-- Submitted notes will appear here -->
+                        <!-- Submitted notes will appear here AFTER reveal -->
                     </div>
                 </div>
-
+                <button id="reveal-thoughts-btn" class="mt-4 w-full bg-slate-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-slate-700 focus:outline-none focus:ring-4 focus:ring-slate-300 transition-all duration-300 shadow-md hover:shadow-lg">
+                    Show Thoughts
+                </button>
             </section>
         </div>
     </main>
 
-    <!-- Modal -->
-    <div id="modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-            <div class="mt-3 text-center">
-                <h3 id="modal-title" class="text-lg leading-6 font-medium text-gray-900"></h3>
-                <div class="mt-2 px-7 py-3">
-                    <p id="modal-body" class="text-sm text-gray-500"></p>
-                </div>
-                <div class="items-center px-4 py-3">
-                    <button id="modal-close-btn" class="px-4 py-2 bg-blue-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-300">
-                        OK
-                    </button>
-                </div>
+    <!-- --- Updated Scenario Pop-up Modal --- -->
+    <div id="scenario-modal" class="modal-hidden hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div id="scenario-modal-overlay" class="modal-overlay fixed inset-0"></div>
+        <div class="modal-content bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 md:p-8 relative transform text-center">
+            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-blue-100 mb-4">
+                <svg class="h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
             </div>
+            <h3 class="text-2xl font-bold text-slate-900 mb-4">Ministering Scenario</h3>
+            <blockquote class="relative p-4">
+                <p id="scenario-modal-text" class="text-lg italic text-slate-700 leading-relaxed"></p>
+            </blockquote>
+            <button id="scenario-modal-close" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-300">
+                Close
+            </button>
         </div>
     </div>
 
