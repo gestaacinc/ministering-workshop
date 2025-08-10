@@ -77,10 +77,10 @@
         }
 
         /* Custom scrollbar */
-        #bowl2-content::-webkit-scrollbar, #facilitator-view-content::-webkit-scrollbar { width: 8px; }
-        #bowl2-content::-webkit-scrollbar-track, #facilitator-view-content::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
-        #bowl2-content::-webkit-scrollbar-thumb, #facilitator-view-content::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
-        #bowl2-content::-webkit-scrollbar-thumb:hover, #facilitator-view-content::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        #thoughts-modal-content::-webkit-scrollbar, #facilitator-view-content::-webkit-scrollbar { width: 8px; }
+        #thoughts-modal-content::-webkit-scrollbar-track, #facilitator-view-content::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+        #thoughts-modal-content::-webkit-scrollbar-thumb, #facilitator-view-content::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
+        #thoughts-modal-content::-webkit-scrollbar-thumb:hover, #facilitator-view-content::-webkit-scrollbar-thumb:hover { background: #64748b; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased">
@@ -90,7 +90,7 @@
         // --- Firebase Imports ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Firebase Configuration ---
         const firebaseConfig = {
@@ -105,7 +105,6 @@
         // --- App State ---
         let db, auth, app;
         let allThoughts = [];
-        let thoughtsRevealed = false;
         let currentGroupName = '';
 
         // --- Element References ---
@@ -114,6 +113,9 @@
         const facilitatorViewLink = document.getElementById('facilitator-view-link');
         const mainViewLink = document.getElementById('main-view-link');
         const facilitatorViewContent = document.getElementById('facilitator-view-content');
+        const resetButton = document.getElementById('reset-button');
+        const resetModal = document.getElementById('reset-modal');
+        const confirmResetButton = document.getElementById('confirm-reset-btn');
 
         const drawButton = document.getElementById('draw-scenario-btn');
         const scenarioDisplay = document.getElementById('scenario-display');
@@ -125,11 +127,14 @@
 
         const scenarioModal = document.getElementById('scenario-modal');
         const scenarioModalText = document.getElementById('scenario-modal-text');
-        const scenarioModalClose = document.getElementById('scenario-modal-close');
+        
+        const validationModal = document.getElementById('validation-modal');
+        const noThoughtsModal = document.getElementById('no-thoughts-modal');
+        const thoughtsModal = document.getElementById('thoughts-modal');
+        const thoughtsModalContent = document.getElementById('thoughts-modal-content');
         
         const submissionForm = document.getElementById('submission-form');
         const submissionInput = document.getElementById('submission-input');
-        const bowl2Content = document.getElementById('bowl2-content');
         const loadingSpinner = document.getElementById('loading-spinner');
         const bowl2CollectingState = document.getElementById('bowl2-collecting-state');
         const submissionCounter = document.getElementById('submission-counter');
@@ -159,7 +164,7 @@
             }
         });
         
-        // --- Navigation ---
+        // --- Navigation & Reset ---
         facilitatorViewLink.addEventListener('click', (e) => {
             e.preventDefault();
             mainView.classList.add('hidden');
@@ -171,6 +176,38 @@
             facilitatorView.classList.add('hidden');
             mainView.classList.remove('hidden');
         });
+
+        resetButton.addEventListener('click', () => {
+            showModal('reset-modal');
+        });
+
+        confirmResetButton.addEventListener('click', async () => {
+            await resetWorkshopData();
+            hideModal('reset-modal');
+        });
+
+        async function resetWorkshopData() {
+            if (!db) return;
+            
+            confirmResetButton.disabled = true;
+            confirmResetButton.textContent = 'Resetting...';
+
+            const collectionsToDelete = ['public/data/drawn-scenarios', 'public/data/ministering-thoughts'];
+            
+            for (const path of collectionsToDelete) {
+                const collectionRef = collection(db, path);
+                const snapshot = await getDocs(collectionRef);
+                const deletePromises = [];
+                snapshot.forEach(doc => {
+                    deletePromises.push(deleteDoc(doc.ref));
+                });
+                await Promise.all(deletePromises);
+            }
+            
+            console.log('Workshop data has been reset.');
+            confirmResetButton.disabled = false;
+            confirmResetButton.textContent = 'Yes, Reset Data';
+        }
 
 
         // --- Bowl 1: Scenarios with Group Input ---
@@ -188,14 +225,14 @@
         ];
         
         drawButton.addEventListener('click', () => {
-            showGroupModal();
+            showModal('group-modal');
         });
 
         groupForm.addEventListener('submit', (e) => {
             e.preventDefault();
             currentGroupName = groupInput.value.trim();
             if (currentGroupName) {
-                hideGroupModal();
+                hideModal('group-modal');
                 startScenarioDraw();
             }
         });
@@ -224,7 +261,6 @@
             scenarioDisplay.classList.remove('is-flashing');
             scenarioDisplay.classList.add('final-pick');
             
-            // Save to Firestore
             try {
                 const collectionPath = `public/data/drawn-scenarios`;
                 await addDoc(collection(db, collectionPath), {
@@ -236,42 +272,46 @@
                 console.error("Error saving drawn scenario: ", error);
             }
 
-            showScenarioModal(finalScenario);
+            scenarioModalText.textContent = finalScenario;
+            showModal('scenario-modal');
 
             drawButton.disabled = false;
             drawButton.innerHTML = 'Draw Another Scenario';
         }
 
-        function showGroupModal() {
-            groupModal.classList.remove('hidden');
-            setTimeout(() => groupModal.classList.remove('modal-hidden'), 20);
+        // --- Generic Modal Functions ---
+        function showModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.classList.remove('hidden');
+                setTimeout(() => modal.classList.remove('modal-hidden'), 20);
+            }
         }
 
-        function hideGroupModal() {
-            groupModal.classList.add('modal-hidden');
-            setTimeout(() => groupModal.classList.add('hidden'), 300);
+        function hideModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.classList.add('modal-hidden');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            }
         }
 
-        function showScenarioModal(text) {
-            scenarioModalText.textContent = text;
-            scenarioModal.classList.remove('hidden');
-            setTimeout(() => scenarioModal.classList.remove('modal-hidden'), 20);
-        }
-
-        function hideScenarioModal() {
-            scenarioModal.classList.add('modal-hidden');
-            setTimeout(() => scenarioModal.classList.add('hidden'), 300);
-        }
-
-        scenarioModalClose.addEventListener('click', hideScenarioModal);
-        document.getElementById('scenario-modal-overlay').addEventListener('click', hideScenarioModal);
+        document.querySelectorAll('[data-modal-hide]').forEach(el => {
+            el.addEventListener('click', () => {
+                const modalId = el.getAttribute('data-modal-hide');
+                hideModal(modalId);
+            });
+        });
 
 
         // --- Bowl 2: Interactive Input & Display with Reveal Step ---
         submissionForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const text = submissionInput.value.trim();
-            if (text === '' || !db) return;
+            if (text === '') {
+                showModal('validation-modal');
+                return;
+            }
 
             const submitButton = submissionForm.querySelector('button');
             submitButton.disabled = true;
@@ -309,45 +349,33 @@
             onSnapshot(q, (querySnapshot) => {
                 loadingSpinner.style.display = 'none';
                 allThoughts = querySnapshot.docs.map(doc => doc.data());
-                allThoughts.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
-
-                const count = allThoughts.length;
-                submissionCounter.textContent = `${count} ${count === 1 ? 'entry' : 'entries'} submitted`;
-
-                if (thoughtsRevealed) {
-                    displayAllThoughts();
-                }
+                submissionCounter.textContent = `${allThoughts.length} ${allThoughts.length === 1 ? 'entry' : 'entries'} submitted`;
             });
         }
         
         revealButton.addEventListener('click', () => {
-            thoughtsRevealed = true;
-            displayAllThoughts();
-            bowl2CollectingState.classList.add('hidden');
-            revealButton.classList.add('hidden');
-            submissionForm.classList.add('hidden');
-            document.getElementById('bowl2-prompt').classList.add('hidden');
+            if (allThoughts.length === 0) {
+                showModal('no-thoughts-modal');
+            } else {
+                displayAllThoughtsInModal();
+                showModal('thoughts-modal');
+            }
         });
         
-        function displayAllThoughts() {
-            bowl2Content.innerHTML = '';
-            if (allThoughts.length === 0) {
-                 bowl2Content.innerHTML = `<p class="text-slate-500 text-center italic p-4">The bowl is empty.</p>`;
-            } else {
-                allThoughts.forEach(thought => createNoteElement(thought.text));
-            }
+        function displayAllThoughtsInModal() {
+            thoughtsModalContent.innerHTML = '';
+            const shuffledThoughts = [...allThoughts].sort(() => 0.5 - Math.random());
+
+            shuffledThoughts.forEach(thought => {
+                const thoughtEl = document.createElement('div');
+                thoughtEl.className = 'note bg-amber-100 text-amber-900 p-4 rounded-xl shadow-sm border border-amber-200 flex items-start gap-3';
+                const icon = `<div class="flex-shrink-0 bg-white/50 rounded-full h-8 w-8 flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-amber-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.083-3.083A7.002 7.002 0 012 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM4.754 14.346A6.986 6.986 0 0010 16c3.309 0 6-2.691 6-6s-2.691-6-6-6-6 2.691-6 6c0 1.309.421 2.527 1.146 3.554l.754.946z" clip-rule="evenodd" /></svg></div>`;
+                thoughtEl.innerHTML = `${icon}<p class="flex-grow">${thought.text}</p>`;
+                thoughtsModalContent.appendChild(thoughtEl);
+            });
         }
 
-        function createNoteElement(text) {
-            const note = document.createElement('div');
-            note.className = 'note bg-amber-100 text-amber-900 p-3 rounded-lg shadow-sm border border-amber-200';
-            const p = document.createElement('p');
-            p.textContent = text;
-            note.appendChild(p);
-            bowl2Content.appendChild(note);
-        }
-
-        // --- Facilitator View Logic ---
+        // --- Facilitator View Logic (Revamped) ---
         function setupFacilitatorViewListener() {
             if (!db) return;
             const collectionPath = `public/data/drawn-scenarios`;
@@ -370,41 +398,63 @@
         function renderFacilitatorView(scenariosByGroup) {
             facilitatorViewContent.innerHTML = '';
             if (Object.keys(scenariosByGroup).length === 0) {
-                facilitatorViewContent.innerHTML = `<p class="text-slate-500 text-center italic p-4">No scenarios have been drawn yet.</p>`;
+                facilitatorViewContent.innerHTML = `<div class="col-span-full text-center py-12 bg-white rounded-lg shadow-md"><p class="text-slate-500 italic">No scenarios have been drawn yet.</p></div>`;
                 return;
             }
 
             for (const groupName in scenariosByGroup) {
-                const groupDiv = document.createElement('div');
-                groupDiv.className = 'bg-white p-6 rounded-2xl shadow-lg border border-slate-200';
+                const card = document.createElement('div');
+                card.className = 'bg-white p-6 rounded-2xl shadow-lg border border-slate-200 flex flex-col gap-4';
+                
+                const header = document.createElement('div');
+                header.className = 'flex items-center gap-3';
+                
+                const iconWrapper = document.createElement('div');
+                iconWrapper.className = 'bg-blue-100 text-blue-700 rounded-full h-10 w-10 flex items-center justify-center flex-shrink-0';
+                iconWrapper.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" /></svg>`;
                 
                 const groupTitle = document.createElement('h3');
-                groupTitle.className = 'text-xl font-bold text-blue-800 mb-3';
+                groupTitle.className = 'text-xl font-bold text-slate-800';
                 groupTitle.textContent = groupName;
-                groupDiv.appendChild(groupTitle);
 
-                const scenarioList = document.createElement('ul');
-                scenarioList.className = 'space-y-2 list-disc list-inside text-slate-700';
+                header.appendChild(iconWrapper);
+                header.appendChild(groupTitle);
                 
-                scenariosByGroup[groupName].forEach(scenario => {
-                    const listItem = document.createElement('li');
-                    listItem.textContent = scenario;
-                    scenarioList.appendChild(listItem);
-                });
+                const scenarioText = document.createElement('p');
+                scenarioText.className = 'text-slate-600';
+                scenarioText.textContent = scenariosByGroup[groupName][scenariosByGroup[groupName].length - 1];
 
-                groupDiv.appendChild(scenarioList);
-                facilitatorViewContent.appendChild(groupDiv);
+                card.appendChild(header);
+                card.appendChild(scenarioText);
+
+                facilitatorViewContent.appendChild(card);
             }
         }
 
     </script>
 
     <header class="bg-white shadow-sm sticky top-0 z-20">
-        <nav class="container mx-auto p-4 flex justify-between items-center">
-            <h1 class="text-xl md:text-2xl font-bold text-slate-900">Ministering Workshop</h1>
-            <div>
-                <a href="#" id="main-view-link" class="text-blue-600 hover:underline font-semibold">Main View</a>
-                <a href="#" id="facilitator-view-link" class="ml-4 text-blue-600 hover:underline font-semibold">Facilitator View</a>
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 p-2 rounded-lg text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 3.5a1.5 1.5 0 013 0V4a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-.5a1.5 1.5 0 000 3h.5a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 00-1-1v-.5a1.5 1.5 0 01-3 0v.5a1 1 0 00-1 1H6a1 1 0 01-1-1v-3a1 1 0 011-1h.5a1.5 1.5 0 000-3H6a1 1 0 01-1-1V5a1 1 0 011-1h3a1 1 0 001-1v-.5z" />
+                    </svg>
+                </div>
+                <h1 class="text-lg sm:text-xl font-bold text-slate-900">Ministering Workshop</h1>
+            </div>
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                <a href="#" id="main-view-link" class="text-sm sm:text-base text-blue-600 hover:underline font-semibold">Main View</a>
+                <a href="#" id="facilitator-view-link" class="text-slate-500 hover:text-blue-600 transition-colors" title="Facilitator View" aria-label="Facilitator View">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                </a>
+                <button id="reset-button" class="text-slate-500 hover:text-red-600 transition-colors" title="Reset Workshop Data" aria-label="Reset Workshop Data">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M4 4l16 16" />
+                    </svg>
+                </button>
             </div>
         </nav>
     </header>
@@ -463,9 +513,6 @@
                         <p class="text-slate-600 font-semibold text-lg">Accepting thoughts...</p>
                         <p id="submission-counter" class="text-slate-500">0 entries submitted</p>
                     </div>
-                    <div id="bowl2-content" class="space-y-3 h-full max-h-[40vh] lg:max-h-[30vh] overflow-y-auto pr-2 relative">
-                        <!-- Submitted notes will appear here AFTER reveal -->
-                    </div>
                 </div>
                 <button id="reveal-thoughts-btn" class="mt-4 w-full bg-slate-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-slate-700 focus:outline-none focus:ring-4 focus:ring-slate-300 transition-all duration-300 shadow-md hover:shadow-lg">
                     Show Thoughts
@@ -478,49 +525,82 @@
     <div id="facilitator-view" class="hidden container mx-auto p-4 md:p-8 max-w-7xl">
         <h2 class="text-3xl font-bold text-slate-900 mb-6">Facilitator Dashboard</h2>
         <div id="facilitator-view-content" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <!-- Drawn scenarios will be populated here by JavaScript -->
+            <!-- Revamped facilitator cards will be populated here by JavaScript -->
         </div>
     </div>
 
 
-    <!-- --- Group Input Modal --- -->
+    <!-- --- Modals --- -->
     <div id="group-modal" class="modal-hidden hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
-        <div class="modal-overlay fixed inset-0"></div>
+        <div data-modal-hide="group-modal" class="modal-overlay fixed inset-0"></div>
         <div class="modal-content bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 md:p-8 relative transform text-center">
-            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-blue-100 mb-4">
-                <svg class="h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-            </div>
+            <button data-modal-hide="group-modal" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors" aria-label="Close modal"><svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-blue-100 mb-4"><svg class="h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg></div>
             <h3 class="text-2xl font-bold text-slate-900 mb-2">Enter Your Group Name</h3>
             <p class="text-slate-600 mb-6">This helps organize the activity.</p>
-            <form id="group-form">
-                <input id="group-input" type="text" placeholder="e.g., Group 1" required class="w-full px-4 py-3 bg-slate-100 border-2 border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none transition text-center text-lg">
-                <button type="submit" class="mt-4 w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-300">
-                    Start Drawing
-                </button>
-            </form>
+            <form id="group-form"><input id="group-input" type="text" placeholder="e.g., Group 1" required class="w-full px-4 py-3 bg-slate-100 border-2 border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none transition text-center text-lg"><button type="submit" class="mt-4 w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-300">Start Drawing</button></form>
         </div>
     </div>
 
-    <!-- --- Scenario Pop-up Modal --- -->
     <div id="scenario-modal" class="modal-hidden hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
-        <div id="scenario-modal-overlay" class="modal-overlay fixed inset-0"></div>
+        <div data-modal-hide="scenario-modal" class="modal-overlay fixed inset-0"></div>
         <div class="modal-content bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 md:p-8 relative transform text-center">
-            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-blue-100 mb-4">
-                <svg class="h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-            </div>
+            <button data-modal-hide="scenario-modal" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors" aria-label="Close modal"><svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-blue-100 mb-4"><svg class="h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
             <h3 class="text-2xl font-bold text-slate-900 mb-4">Ministering Scenario</h3>
-            <blockquote class="relative p-4">
-                <p id="scenario-modal-text" class="text-lg italic text-slate-700 leading-relaxed"></p>
-            </blockquote>
-            <button id="scenario-modal-close" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-300">
-                Close
-            </button>
+            <blockquote class="relative p-4"><p id="scenario-modal-text" class="text-lg italic text-slate-700 leading-relaxed"></p></blockquote>
+            <button data-modal-hide="scenario-modal" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-300">Close</button>
+        </div>
+    </div>
+
+    <div id="validation-modal" class="modal-hidden hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div data-modal-hide="validation-modal" class="modal-overlay fixed inset-0"></div>
+        <div class="modal-content bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 md:p-8 relative transform text-center">
+             <button data-modal-hide="validation-modal" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors" aria-label="Close modal"><svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-yellow-100 mb-4"><svg class="h-8 w-8 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg></div>
+            <h3 class="text-2xl font-bold text-slate-900 mb-2">Empty Thought</h3>
+            <p class="text-slate-600 mb-6">Please type your thoughts in the input box before adding them to the bowl.</p>
+            <button data-modal-hide="validation-modal" class="w-full bg-yellow-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-yellow-600 focus:outline-none focus:ring-4 focus:ring-yellow-300 transition-all duration-300">Got it</button>
+        </div>
+    </div>
+    
+    <div id="no-thoughts-modal" class="modal-hidden hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div data-modal-hide="no-thoughts-modal" class="modal-overlay fixed inset-0"></div>
+        <div class="modal-content bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 md:p-8 relative transform text-center">
+             <button data-modal-hide="no-thoughts-modal" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors" aria-label="Close modal"><svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-blue-100 mb-4"><svg class="h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg></div>
+            <h3 class="text-2xl font-bold text-slate-900 mb-2">Bowl is Empty</h3>
+            <p class="text-slate-600 mb-6">No thoughts have been submitted yet. Encourage participants to add their ideas!</p>
+            <button data-modal-hide="no-thoughts-modal" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-300">OK</button>
+        </div>
+    </div>
+
+    <div id="thoughts-modal" class="modal-hidden hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div data-modal-hide="thoughts-modal" class="modal-overlay fixed inset-0"></div>
+        <div class="modal-content bg-slate-50 rounded-2xl shadow-2xl w-full max-w-4xl h-[80vh] p-6 md:p-8 relative transform flex flex-col">
+            <div class="flex justify-between items-center mb-4 flex-shrink-0">
+                <h3 class="text-2xl font-bold text-slate-900">Thoughts from the Bowl</h3>
+                <button data-modal-hide="thoughts-modal" class="text-slate-400 hover:text-slate-600 transition-colors" aria-label="Close modal"><svg class="h-8 w-8" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+            <div id="thoughts-modal-content" class="flex-grow overflow-y-auto p-2 -m-2 space-y-4">
+                <!-- Menti-style thoughts will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <div id="reset-modal" class="modal-hidden hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div data-modal-hide="reset-modal" class="modal-overlay fixed inset-0"></div>
+        <div class="modal-content bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 md:p-8 relative transform text-center">
+             <button data-modal-hide="reset-modal" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors" aria-label="Close modal"><svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4"><svg class="h-8 w-8 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg></div>
+            <h3 class="text-2xl font-bold text-slate-900 mb-2">Reset Workshop?</h3>
+            <p class="text-slate-600 mb-6">This will delete all drawn scenarios and submitted thoughts. This action cannot be undone.</p>
+            <div class="flex gap-4">
+                <button data-modal-hide="reset-modal" class="w-full bg-slate-200 text-slate-800 font-bold py-3 px-4 rounded-lg hover:bg-slate-300 focus:outline-none focus:ring-4 focus:ring-slate-300 transition-all duration-300">Cancel</button>
+                <button id="confirm-reset-btn" class="w-full bg-red-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-4 focus:ring-red-300 transition-all duration-300 disabled:bg-red-300">Yes, Reset Data</button>
+            </div>
         </div>
     </div>
 
 </body>
-</html>
+</ht
