@@ -41,7 +41,7 @@
             to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
-        /* --- Updated Modal Animation Styles --- */
+        /* --- Modal Animation Styles --- */
         .modal-overlay {
             transition: opacity 0.3s ease-in-out;
         }
@@ -77,10 +77,10 @@
         }
 
         /* Custom scrollbar */
-        #bowl2-content::-webkit-scrollbar { width: 8px; }
-        #bowl2-content::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
-        #bowl2-content::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
-        #bowl2-content::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        #bowl2-content::-webkit-scrollbar, #facilitator-view-content::-webkit-scrollbar { width: 8px; }
+        #bowl2-content::-webkit-scrollbar-track, #facilitator-view-content::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+        #bowl2-content::-webkit-scrollbar-thumb, #facilitator-view-content::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
+        #bowl2-content::-webkit-scrollbar-thumb:hover, #facilitator-view-content::-webkit-scrollbar-thumb:hover { background: #64748b; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased">
@@ -97,7 +97,7 @@
           apiKey: "AIzaSyCbJZpp5sJhmtB28MuRmpR3OyCnC332if8",
           authDomain: "ministering-workshop-app.firebaseapp.com",
           projectId: "ministering-workshop-app",
-          storageBucket: "ministering-workshop-app.firebasestorage.app",
+          storageBucket: "ministering-workshop-app.appspot.com",
           messagingSenderId: "643900794295",
           appId: "1:643900794295:web:1f10260dea585076aa7432"
         };
@@ -106,11 +106,23 @@
         let db, auth, app;
         let allThoughts = [];
         let thoughtsRevealed = false;
+        let currentGroupName = '';
 
         // --- Element References ---
+        const mainView = document.getElementById('main-view');
+        const facilitatorView = document.getElementById('facilitator-view');
+        const facilitatorViewLink = document.getElementById('facilitator-view-link');
+        const mainViewLink = document.getElementById('main-view-link');
+        const facilitatorViewContent = document.getElementById('facilitator-view-content');
+
         const drawButton = document.getElementById('draw-scenario-btn');
         const scenarioDisplay = document.getElementById('scenario-display');
         const scenarioText = document.getElementById('scenario-text');
+        
+        const groupModal = document.getElementById('group-modal');
+        const groupForm = document.getElementById('group-form');
+        const groupInput = document.getElementById('group-input');
+
         const scenarioModal = document.getElementById('scenario-modal');
         const scenarioModalText = document.getElementById('scenario-modal-text');
         const scenarioModalClose = document.getElementById('scenario-modal-close');
@@ -143,21 +155,52 @@
             }
             if (auth.currentUser) {
                 setupBowl2Listener();
+                setupFacilitatorViewListener();
             }
         });
+        
+        // --- Navigation ---
+        facilitatorViewLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            mainView.classList.add('hidden');
+            facilitatorView.classList.remove('hidden');
+        });
 
-        // --- Bowl 1: Scenarios with Pop-up Modal ---
+        mainViewLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            facilitatorView.classList.add('hidden');
+            mainView.classList.remove('hidden');
+        });
+
+
+        // --- Bowl 1: Scenarios with Group Input ---
         const scenarios = [
-            "A family you minister to recently had a death in the family. How can you offer Christlike comfort beyond just saying 'let me know if you need anything'?",
-            "A young single adult in your ward seems lonely and rarely participates in activities. What are some simple, low-pressure ways to help them feel included?",
             "You learn a member you minister to has to work on Sundays to support their family. How can you minister to them without judgment, helping them feel connected to the ward?",
             "A member mentions they've gotten into the habit of only attending sacrament meeting and then leaving. What are some ways you could gently encourage them to enjoy the fellowship of the full two-hour block?",
-            "A new convert in your ward is enthusiastic but seems overwhelmed. How can you minister to them to help strengthen their testimony and integrate them into the ward family?",
-            "You are assigned to a family that is very different from your own (culturally, economically, or in family structure). How do you build a genuine, meaningful relationship with them?",
-            "A member confides in you that they are struggling with their testimony. How do you respond in a loving, supportive, and faith-promoting way?"
+            "A less-active brother in your companionship is very hesitant to participate in ministering with you.",
+            "The family you are assigned to was recently affected by a typhoon and has lost some of their property. They say they are 'okay,' but you feel they are overwhelmed.",
+            "A young single adult in your ward just lost their job and is feeling discouraged.",
+            "A sister you minister to is a single parent who feels very isolated and disconnected from the ward.",
+            "A family is preparing their child for baptism but seems unsure of how to help them prepare.",
+            "An elderly brother lives alone and has expressed feelings of loneliness, especially on weekends.",
+            "A member you minister to has a job that requires them to work on Sundays. They express sadness about missing church and feeling disconnected.",
+            "A family faithfully attends sacrament meeting each week but leaves immediately after and does not attend any other meetings or activities."
         ];
         
         drawButton.addEventListener('click', () => {
+            showGroupModal();
+        });
+
+        groupForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            currentGroupName = groupInput.value.trim();
+            if (currentGroupName) {
+                hideGroupModal();
+                startScenarioDraw();
+            }
+        });
+
+        function startScenarioDraw() {
             drawButton.disabled = true;
             drawButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 4.75V6.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M17.1266 6.87347L16.0659 7.93413" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M19.25 12L17.75 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M17.1266 17.1265L16.0659 16.0659" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M12 17.75V19.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M6.87347 17.1265L7.93413 16.0659" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M4.75 12L6.25 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M6.87347 6.87347L7.93413 7.93413" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg> Picking...`;
             scenarioDisplay.classList.remove('final-pick');
@@ -172,25 +215,46 @@
                 clearInterval(flashInterval);
                 pickFinalScenario();
             }, 2500);
-        });
+        }
 
-        function pickFinalScenario() {
+        async function pickFinalScenario() {
             const finalIndex = Math.floor(Math.random() * scenarios.length);
             const finalScenario = scenarios[finalIndex];
             scenarioText.textContent = "Scenario Selected!";
             scenarioDisplay.classList.remove('is-flashing');
             scenarioDisplay.classList.add('final-pick');
             
+            // Save to Firestore
+            try {
+                const collectionPath = `public/data/drawn-scenarios`;
+                await addDoc(collection(db, collectionPath), {
+                    groupName: currentGroupName,
+                    scenario: finalScenario,
+                    drawnAt: new Date()
+                });
+            } catch (error) {
+                console.error("Error saving drawn scenario: ", error);
+            }
+
             showScenarioModal(finalScenario);
 
             drawButton.disabled = false;
             drawButton.innerHTML = 'Draw Another Scenario';
         }
 
+        function showGroupModal() {
+            groupModal.classList.remove('hidden');
+            setTimeout(() => groupModal.classList.remove('modal-hidden'), 20);
+        }
+
+        function hideGroupModal() {
+            groupModal.classList.add('modal-hidden');
+            setTimeout(() => groupModal.classList.add('hidden'), 300);
+        }
+
         function showScenarioModal(text) {
             scenarioModalText.textContent = text;
             scenarioModal.classList.remove('hidden');
-            // A small delay to allow the 'hidden' class to be removed before starting animation
             setTimeout(() => scenarioModal.classList.remove('modal-hidden'), 20);
         }
 
@@ -282,15 +346,71 @@
             note.appendChild(p);
             bowl2Content.appendChild(note);
         }
+
+        // --- Facilitator View Logic ---
+        function setupFacilitatorViewListener() {
+            if (!db) return;
+            const collectionPath = `public/data/drawn-scenarios`;
+            const q = query(collection(db, collectionPath));
+
+            onSnapshot(q, (querySnapshot) => {
+                const scenariosByGroup = {};
+                querySnapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    if (!scenariosByGroup[data.groupName]) {
+                        scenariosByGroup[data.groupName] = [];
+                    }
+                    scenariosByGroup[data.groupName].push(data.scenario);
+                });
+
+                renderFacilitatorView(scenariosByGroup);
+            });
+        }
+
+        function renderFacilitatorView(scenariosByGroup) {
+            facilitatorViewContent.innerHTML = '';
+            if (Object.keys(scenariosByGroup).length === 0) {
+                facilitatorViewContent.innerHTML = `<p class="text-slate-500 text-center italic p-4">No scenarios have been drawn yet.</p>`;
+                return;
+            }
+
+            for (const groupName in scenariosByGroup) {
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'bg-white p-6 rounded-2xl shadow-lg border border-slate-200';
+                
+                const groupTitle = document.createElement('h3');
+                groupTitle.className = 'text-xl font-bold text-blue-800 mb-3';
+                groupTitle.textContent = groupName;
+                groupDiv.appendChild(groupTitle);
+
+                const scenarioList = document.createElement('ul');
+                scenarioList.className = 'space-y-2 list-disc list-inside text-slate-700';
+                
+                scenariosByGroup[groupName].forEach(scenario => {
+                    const listItem = document.createElement('li');
+                    listItem.textContent = scenario;
+                    scenarioList.appendChild(listItem);
+                });
+
+                groupDiv.appendChild(scenarioList);
+                facilitatorViewContent.appendChild(groupDiv);
+            }
+        }
+
     </script>
 
-    <!-- Main Content -->
-    <main class="container mx-auto p-4 md:p-8 max-w-7xl">
-        <header class="text-center mb-8 md:mb-12">
-            <h1 class="text-4xl md:text-5xl font-bold text-slate-900">Ministering Workshop</h1>
-            <p class="mt-2 text-lg text-slate-600">Discovering Higher and Holier Ways to Serve</p>
-        </header>
+    <header class="bg-white shadow-sm sticky top-0 z-20">
+        <nav class="container mx-auto p-4 flex justify-between items-center">
+            <h1 class="text-xl md:text-2xl font-bold text-slate-900">Ministering Workshop</h1>
+            <div>
+                <a href="#" id="main-view-link" class="text-blue-600 hover:underline font-semibold">Main View</a>
+                <a href="#" id="facilitator-view-link" class="ml-4 text-blue-600 hover:underline font-semibold">Facilitator View</a>
+            </div>
+        </nav>
+    </header>
 
+    <!-- Main Workshop View -->
+    <main id="main-view" class="container mx-auto p-4 md:p-8 max-w-7xl">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
             <!-- Bowl 1: Scenarios -->
@@ -299,7 +419,7 @@
                     <div class="bg-blue-100 text-blue-700 rounded-full h-12 w-12 flex items-center justify-center mr-4 flex-shrink-0">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
                     </div>
-                    <h2 class="text-2xl font-bold">Bowl #1: Ministering Scenarios</h2>
+                    <h2 class="text-2xl font-bold">Bowl #1: The Challenge Scenarios</h2>
                 </div>
                 <p class="text-slate-600 mb-4">Discuss how you would apply Christlike love in these real-life situations.</p>
                 
@@ -354,7 +474,36 @@
         </div>
     </main>
 
-    <!-- --- Updated Scenario Pop-up Modal --- -->
+    <!-- Facilitator View -->
+    <div id="facilitator-view" class="hidden container mx-auto p-4 md:p-8 max-w-7xl">
+        <h2 class="text-3xl font-bold text-slate-900 mb-6">Facilitator Dashboard</h2>
+        <div id="facilitator-view-content" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Drawn scenarios will be populated here by JavaScript -->
+        </div>
+    </div>
+
+
+    <!-- --- Group Input Modal --- -->
+    <div id="group-modal" class="modal-hidden hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div class="modal-overlay fixed inset-0"></div>
+        <div class="modal-content bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 md:p-8 relative transform text-center">
+            <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-blue-100 mb-4">
+                <svg class="h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-slate-900 mb-2">Enter Your Group Name</h3>
+            <p class="text-slate-600 mb-6">This helps organize the activity.</p>
+            <form id="group-form">
+                <input id="group-input" type="text" placeholder="e.g., Group 1" required class="w-full px-4 py-3 bg-slate-100 border-2 border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none transition text-center text-lg">
+                <button type="submit" class="mt-4 w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-300">
+                    Start Drawing
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- --- Scenario Pop-up Modal --- -->
     <div id="scenario-modal" class="modal-hidden hidden fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
         <div id="scenario-modal-overlay" class="modal-overlay fixed inset-0"></div>
         <div class="modal-content bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 md:p-8 relative transform text-center">
